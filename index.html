@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coen Family Auto: Stripe Reconciliation</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo-lockup">
+        <span class="logo-mark">CFA</span>
+        <div>
+          <div class="logo-title">Coen Family Auto</div>
+          <div class="logo-sub">Stripe Reconciliation Tool</div>
+        </div>
+      </div>
+      <button id="settings-btn" class="settings-btn" title="API Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+    </div>
+  </header>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>API Settings</h2>
+        <button class="modal-close" id="settings-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label for="api-key-input">Anthropic API Key</label>
+        <p class="field-hint">Your key is stored only in this browser. It is never sent anywhere except Anthropic's API.</p>
+        <div class="key-input-row">
+          <input type="password" id="api-key-input" placeholder="sk-ant-..." autocomplete="off" />
+          <button id="toggle-key-vis" class="btn-ghost">Show</button>
+        </div>
+        <div class="modal-actions">
+          <button id="save-key-btn" class="btn-primary">Save Key</button>
+          <button id="clear-key-btn" class="btn-danger-ghost">Clear Saved Key</button>
+        </div>
+        <p id="key-status" class="key-status"></p>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <section class="intro">
+      <h1>Weekly Deposit Reconciliation</h1>
+      <p>Upload the Stripe itemized payout export for each company. The tool will parse the data, build the formatted HTML emails, and create Gmail drafts ready to review and send.</p>
+    </section>
+
+    <!-- API Key Banner (shown when no key saved) -->
+    <div id="no-key-banner" class="banner banner-warn hidden">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      No API key saved. Open <strong>Settings</strong> to add your Anthropic API key before running.
+    </div>
+
+    <div class="upload-grid">
+
+      <!-- Matos Card -->
+      <div class="company-card" id="matos-card">
+        <div class="card-header matos">
+          <div class="company-badge">M</div>
+          <div>
+            <div class="company-name">Matos Auto Towing</div>
+            <div class="company-detail">Wells Fargo · Blue theme</div>
+          </div>
+          <div id="matos-status" class="card-status"></div>
+        </div>
+        <div class="card-body">
+          <div class="drop-zone" id="matos-drop" data-company="matos">
+            <input type="file" id="matos-file" accept=".xlsx" class="file-input" />
+            <div class="drop-content">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1f4e79" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+              <p class="drop-label">Drop Matos .xlsx here</p>
+              <p class="drop-sub">or <span class="link-text" onclick="document.getElementById('matos-file').click()">browse to upload</span></p>
+            </div>
+          </div>
+          <div id="matos-file-info" class="file-info hidden"></div>
+        </div>
+      </div>
+
+      <!-- Courtesy Card -->
+      <div class="company-card" id="courtesy-card">
+        <div class="card-header courtesy">
+          <div class="company-badge courtesy-badge">C</div>
+          <div>
+            <div class="company-name">Courtesy Towing</div>
+            <div class="company-detail">Chase · Green theme</div>
+          </div>
+          <div id="courtesy-status" class="card-status"></div>
+        </div>
+        <div class="card-body">
+          <div class="drop-zone" id="courtesy-drop" data-company="courtesy">
+            <input type="file" id="courtesy-file" accept=".xlsx" class="file-input" />
+            <div class="drop-content">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1f6b2e" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+              <p class="drop-label">Drop Courtesy .xlsx here</p>
+              <p class="drop-sub">or <span class="link-text" onclick="document.getElementById('courtesy-file').click()">browse to upload</span></p>
+            </div>
+          </div>
+          <div id="courtesy-file-info" class="file-info hidden"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Run Button -->
+    <div class="run-row">
+      <button id="run-btn" class="btn-run" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Generate Drafts
+      </button>
+      <p class="run-hint" id="run-hint">Upload at least one file to continue.</p>
+    </div>
+
+    <!-- Progress Log -->
+    <div id="progress-section" class="progress-section hidden">
+      <div class="progress-header">
+        <span id="progress-title">Processing...</span>
+        <span id="progress-spinner" class="spinner"></span>
+      </div>
+      <div id="progress-log" class="progress-log"></div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-section" class="results-section hidden">
+      <h2>Drafts Created</h2>
+      <div id="results-list" class="results-list"></div>
+      <div class="results-actions">
+        <a href="https://mail.google.com/mail/#drafts" target="_blank" class="btn-primary">Open Gmail Drafts</a>
+        <button id="reset-btn" class="btn-ghost">Run Another Week</button>
+      </div>
+    </div>
+
+    <!-- Error Banner -->
+    <div id="error-section" class="banner banner-error hidden">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      <div>
+        <strong>Error</strong>
+        <p id="error-message"></p>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <p>Coen Family Auto · Internal tool · Data stays in your browser</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
