@@ -400,53 +400,34 @@ function buildEmailHtml(rows, config) {
   return { html, periodStr };
 }
 
-// ---- GMAIL DRAFT VIA CLAUDE API ----
+// ---- GMAIL DRAFT VIA DIRECT GMAIL API ----
 async function createGmailDraft(companyKey, emailHtml, periodStr, apiKey) {
   const config = COMPANY_CONFIG[companyKey];
   const subject = `${config.subjectPrefix}: Stripe Deposit Reconciliation (${periodStr})`;
   const plainText = `Hi all,\n\nPlease see the Stripe deposit reconciliation for ${config.name} from the period ${periodStr}.\n\nKat`;
 
-  const toList = config.to.join(', ');
-  const ccList = config.cc.join(', ');
+  const accessToken = await getValidAccessToken();
 
-  const prompt = `Create a Gmail draft using the Gmail MCP create_draft tool with these exact details:
-
-To: ${toList}
-CC: ${ccList}
-Subject: ${subject}
-Plain text body: ${plainText}
-HTML body: the full HTML provided below
-
-Use the create_draft tool now. The htmlBody parameter should contain the full HTML.
-
-HTML:
-${emailHtml}`;
-
-  const response = await fetch('/.netlify/functions/proxy', {
+  const response = await fetch('/.netlify/functions/create-draft', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
-      mcp_servers: [{ type: 'url', url: 'https://gmailmcp.googleapis.com/mcp/v1', name: 'gmail-mcp' }]
+      accessToken,
+      to: config.to,
+      cc: config.cc,
+      subject,
+      htmlBody: emailHtml,
+      plainBody: plainText
     })
   });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(`API error ${response.status}: ${err?.error?.message || response.statusText}`);
+    throw new Error(`Gmail error: ${err.error || response.statusText}`);
   }
 
   const result = await response.json();
-  const text = (result.content || []).filter(b => b.type === 'text').map(b => b.text).join(' ').toLowerCase();
-  if (text.includes('error') && !text.includes('draft')) {
-    throw new Error('Gmail draft creation may have failed. Check Gmail drafts manually.');
-  }
+  if (!result.success) throw new Error('Draft creation failed.');
   return subject;
 }
 
@@ -473,8 +454,7 @@ $('reset-btn').addEventListener('click', () => {
 });
 
 async function runReconciliation() {
-  const apiKey = getKey();
-  if (!apiKey) { showError('No API key found. Open Settings and add your Anthropic API key first.'); return; }
+  const apiKey = getKey(); // kept for compatibility but no longer used for draft creation
 
   state.running = true;
   runBtn.disabled = true;
@@ -543,4 +523,63 @@ function showError(msg) {
 }
 
 checkKeyBanner();
+checkGmailBanner();
 updateRunButton();
+
+// ---- GMAIL OAUTH ----
+const GMAIL_ACCESS_TOKEN_KEY = 'gmail_access_token';
+const GMAIL_REFRESH_TOKEN_KEY = 'gmail_refresh_token';
+const GMAIL_TOKEN_EXPIRY_KEY = 'gmail_token_expiry';
+
+function getAccessToken() { return localStorage.getItem(GMAIL_ACCESS_TOKEN_KEY); }
+function getRefreshToken() { return localStorage.getItem(GMAIL_REFRESH_TOKEN_KEY); }
+function getTokenExpiry() { return parseInt(localStorage.getItem(GMAIL_TOKEN_EXPIRY_KEY) || '0'); }
+
+function isTokenExpired() {
+  return Date.now() > getTokenExpiry() - 60000; // refresh 1 min early
+}
+
+function checkGmailBanner() {
+  const token = getAccessToken();
+  const banner = $('no-gmail-banner');
+  const label = $('gmail-connected-label');
+  if (token && !isTokenExpired()) {
+    banner.classList.remove('hidden');
+    $('gmail-connect-btn').classList.add('hidden');
+    label.classList.remove('hidden');
+  } else if (!token) {
+    banner.classList.remove('hidden');
+    $('gmail-connect-btn').classList.remove('hidden');
+    label.classList.add('hidden');
+  } else {
+    banner.classList.remove('hidden');
+    $('gmail-connect-btn').classList.remove('hidden');
+    label.classList.add('hidden');
+  }
+}
+
+$('gmail-connect-btn').addEventListener('click', async () => {
+  const res = await fetch('/.netlify/functions/auth');
+  const { authUrl } = await res.json();
+  window.location.href = authUrl;
+});
+
+async function getValidAccessToken() {
+  if (getAccessToken() && !isTokenExpired()) {
+    return getAccessToken();
+  }
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) throw new Error('Gmail not connected. Click "Connect Gmail" to authorize.');
+
+  const res = await fetch('/.netlify/functions/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken })
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error('Failed to refresh Gmail token. Please reconnect Gmail.');
+
+  localStorage.setItem(GMAIL_ACCESS_TOKEN_KEY, data.access_token);
+  localStorage.setItem(GMAIL_TOKEN_EXPIRY_KEY, Date.now() + (data.expires_in * 1000));
+  return data.access_token;
+}
