@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Authenticating...</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f7fa; }
+    .box { background: white; padding: 40px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,.1); max-width: 400px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #1f4e79; border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 20px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h2 { color: #1a1f2e; margin: 0 0 8px; }
+    p { color: #6b7280; margin: 0; }
+    .error { color: #991b1b; }
+  </style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spinner"></div>
+  <h2 id="title">Connecting Gmail...</h2>
+  <p id="msg">Please wait while we complete authentication.</p>
+</div>
+<script>
+  async function handleAuth() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+
+    if (error || !code) {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('title').textContent = 'Authentication failed';
+      document.getElementById('msg').className = 'error';
+      document.getElementById('msg').textContent = error || 'No authorization code received.';
+      return;
+    }
+
+    try {
+      const response = await fetch('/.netlify/functions/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await response.json();
+
+      if (data.access_token) {
+        // Store tokens in localStorage
+        localStorage.setItem('gmail_access_token', data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem('gmail_refresh_token', data.refresh_token);
+        }
+        localStorage.setItem('gmail_token_expiry', Date.now() + (data.expires_in * 1000));
+
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('title').textContent = 'Gmail connected!';
+        document.getElementById('msg').textContent = 'Redirecting back to the app...';
+
+        setTimeout(() => { window.location.href = '/'; }, 1500);
+      } else {
+        throw new Error(data.error || 'No access token received');
+      }
+    } catch (err) {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('title').textContent = 'Authentication failed';
+      document.getElementById('msg').className = 'error';
+      document.getElementById('msg').textContent = err.message;
+    }
+  }
+
+  handleAuth();
+</script>
+</body>
+</html>
