@@ -26,6 +26,65 @@ const errorSection = $('error-section');
 const errorMessage = $('error-message');
 const noKeyBanner = $('no-key-banner');
 
+// ---- GMAIL OAUTH ----
+const GMAIL_ACCESS_TOKEN_KEY = 'gmail_access_token';
+const GMAIL_REFRESH_TOKEN_KEY = 'gmail_refresh_token';
+const GMAIL_TOKEN_EXPIRY_KEY = 'gmail_token_expiry';
+
+function getAccessToken() { return localStorage.getItem(GMAIL_ACCESS_TOKEN_KEY); }
+function getRefreshToken() { return localStorage.getItem(GMAIL_REFRESH_TOKEN_KEY); }
+function getTokenExpiry() { return parseInt(localStorage.getItem(GMAIL_TOKEN_EXPIRY_KEY) || '0'); }
+
+function isTokenExpired() {
+  return Date.now() > getTokenExpiry() - 60000; // refresh 1 min early
+}
+
+function checkGmailBanner() {
+  const token = getAccessToken();
+  const banner = $('no-gmail-banner');
+  const label = $('gmail-connected-label');
+  if (token && !isTokenExpired()) {
+    banner.classList.remove('hidden');
+    $('gmail-connect-btn').classList.add('hidden');
+    label.classList.remove('hidden');
+  } else if (!token) {
+    banner.classList.remove('hidden');
+    $('gmail-connect-btn').classList.remove('hidden');
+    label.classList.add('hidden');
+  } else {
+    banner.classList.remove('hidden');
+    $('gmail-connect-btn').classList.remove('hidden');
+    label.classList.add('hidden');
+  }
+}
+
+$('gmail-connect-btn').addEventListener('click', async () => {
+  const res = await fetch('/.netlify/functions/auth');
+  const { authUrl } = await res.json();
+  window.location.href = authUrl;
+});
+
+async function getValidAccessToken() {
+  if (getAccessToken() && !isTokenExpired()) {
+    return getAccessToken();
+  }
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) throw new Error('Gmail not connected. Click "Connect Gmail" to authorize.');
+
+  const res = await fetch('/.netlify/functions/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken })
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error('Failed to refresh Gmail token. Please reconnect Gmail.');
+
+  localStorage.setItem(GMAIL_ACCESS_TOKEN_KEY, data.access_token);
+  localStorage.setItem(GMAIL_TOKEN_EXPIRY_KEY, Date.now() + (data.expires_in * 1000));
+  return data.access_token;
+}
+
+
 // ---- API KEY ----
 const KEY_STORAGE = 'cfa_anthropic_key';
 function getKey() { return localStorage.getItem(KEY_STORAGE) || ''; }
@@ -525,61 +584,3 @@ function showError(msg) {
 checkKeyBanner();
 checkGmailBanner();
 updateRunButton();
-
-// ---- GMAIL OAUTH ----
-const GMAIL_ACCESS_TOKEN_KEY = 'gmail_access_token';
-const GMAIL_REFRESH_TOKEN_KEY = 'gmail_refresh_token';
-const GMAIL_TOKEN_EXPIRY_KEY = 'gmail_token_expiry';
-
-function getAccessToken() { return localStorage.getItem(GMAIL_ACCESS_TOKEN_KEY); }
-function getRefreshToken() { return localStorage.getItem(GMAIL_REFRESH_TOKEN_KEY); }
-function getTokenExpiry() { return parseInt(localStorage.getItem(GMAIL_TOKEN_EXPIRY_KEY) || '0'); }
-
-function isTokenExpired() {
-  return Date.now() > getTokenExpiry() - 60000; // refresh 1 min early
-}
-
-function checkGmailBanner() {
-  const token = getAccessToken();
-  const banner = $('no-gmail-banner');
-  const label = $('gmail-connected-label');
-  if (token && !isTokenExpired()) {
-    banner.classList.remove('hidden');
-    $('gmail-connect-btn').classList.add('hidden');
-    label.classList.remove('hidden');
-  } else if (!token) {
-    banner.classList.remove('hidden');
-    $('gmail-connect-btn').classList.remove('hidden');
-    label.classList.add('hidden');
-  } else {
-    banner.classList.remove('hidden');
-    $('gmail-connect-btn').classList.remove('hidden');
-    label.classList.add('hidden');
-  }
-}
-
-$('gmail-connect-btn').addEventListener('click', async () => {
-  const res = await fetch('/.netlify/functions/auth');
-  const { authUrl } = await res.json();
-  window.location.href = authUrl;
-});
-
-async function getValidAccessToken() {
-  if (getAccessToken() && !isTokenExpired()) {
-    return getAccessToken();
-  }
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) throw new Error('Gmail not connected. Click "Connect Gmail" to authorize.');
-
-  const res = await fetch('/.netlify/functions/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken })
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error('Failed to refresh Gmail token. Please reconnect Gmail.');
-
-  localStorage.setItem(GMAIL_ACCESS_TOKEN_KEY, data.access_token);
-  localStorage.setItem(GMAIL_TOKEN_EXPIRY_KEY, Date.now() + (data.expires_in * 1000));
-  return data.access_token;
-}
